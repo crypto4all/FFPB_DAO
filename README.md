@@ -1,149 +1,154 @@
-# Système de Vote avec NFT - Documentation
+# Système de Vote NFT - Documentation
 
 ## Description
-Ce système de vote sur la blockchain Ethereum permet de gérer des résolutions avec distribution automatique de NFTs aux votants. Le système inclut une whitelist, un mécanisme de pause et une gestion complète du cycle de vie des votes.
+Système de vote décentralisé sur la blockchain Ethereum utilisant les NFTs comme preuve de participation. Le système permet de créer et gérer des résolutions, d'administrer les votes et de distribuer automatiquement des NFTs aux votants.
 
 ## Fonctionnalités Principales
 
-### 1. Gestion des Résolutions
-- Création de nouvelles résolutions
-- Activation/désactivation des résolutions
-- Vote (Pour, Contre, Abstention)
-- Clôture automatique des votes
+### Administration
+- Création et gestion de résolutions
+- Ajout/suppression de votants (individuel ou en masse)
+- Activation/clôture des votes
+- Système de pause d'urgence
 
-### 2. Système de NFT
-- Distribution automatique de NFTs aux votants
-- Mécanisme de pause en cas de problème
-- Traçabilité des distributions
+### Votants
+- Vote sur les résolutions (Pour, Contre, Abstention)
+- Réception automatique de NFT après le vote
+- Vérification du statut de votant
 
-### 3. Sécurité
-- Système de whitelist
-- Contrôles d'accès (Ownable)
-- Gestion des erreurs
+### Sécurité
+- Gestion des rôles avec AccessControl
+- Protection contre la réentrance
+- Système de pause
+- Utilisation de SafeMath pour les calculs
+
+## Prérequis Techniques
+
+```bash
+Node.js >= 16.0.0
+npm >= 8.0.0
+Solidity ^0.8.24
+```
 
 ## Installation
 
 ```bash
+# Cloner le repository
+git clone [URL_DU_REPO]
+
+# Installer les dépendances
+npm install
+
+# Installer les contrats OpenZeppelin
 npm install @openzeppelin/contracts
 ```
 
 ## Déploiement
 
-```solidity
-Election election = new Election(
-    "VoteNFT",      // Nom du NFT
-    "VOTE",         // Symbole du NFT
-    "https://api.vote-nft.com/metadata/"  // URI de base
+```javascript
+const ElectionSystem = await ethers.getContractFactory("ElectionSystem");
+const election = await ElectionSystem.deploy(
+    "VoteNFT",
+    "VOTE",
+    "https://api.vote-nft.com/metadata/"
 );
+await election.deployed();
 ```
 
-## Utilisation
+## Guide d'Utilisation
 
-### 1. Configuration Initiale
-```solidity
-// Ajouter une adresse à la whitelist
-election.addToWhitelist(address);
+### Administration
+
+```javascript
+// Ajouter un votant unique
+await election.addVoter("0x123...");
+
+// Ajouter plusieurs votants
+const voters = ["0x123...", "0x456...", "0x789..."];
+await election.addVoters(voters);
 
 // Créer une résolution
-election.createResolution(
+await election.createResolution(
     "Description de la résolution",
     startTimestamp,
     endTimestamp
 );
-```
 
-### 2. Gestion des Votes
-```solidity
 // Activer une résolution
-election.activateResolution(resolutionId);
-
-// Voter
-election.vote(resolutionId, Vote.POUR);  // ou CONTRE, ABSTENTION
+await election.activateResolution(resolutionId);
 
 // Clôturer une résolution
-election.closeResolution(resolutionId);
+await election.closeResolution(resolutionId);
 ```
 
-### 3. Gestion des NFTs
+### Votants
+
+```javascript
+// Voter sur une résolution
+await election.vote(resolutionId, 1); // 1=POUR, 2=CONTRE, 3=ABSTENTION
+
+// Vérifier son statut de votant
+const isVoter = await election.isVoter(address);
+```
+
+## Structure des Données
+
+### Énumérations
+
 ```solidity
-// Mettre en pause la distribution
-election.voteNFT.pause();
-
-// Reprendre la distribution
-election.voteNFT.unpause();
-
-// Vérifier si un votant a reçu son NFT
-bool hasNFT = election.hasReceivedNFT(resolutionId, voterAddress);
+enum Status { DRAFT, ACTIVE, CLOSED }
+enum Vote { NONE, POUR, CONTRE, ABSTENTION }
 ```
 
-## Structure des Événements
+### Structure de Résolution
+
+```solidity
+struct Resolution {
+    string description;
+    uint256 startTime;
+    uint256 endTime;
+    Status status;
+    uint256 votePour;
+    uint256 voteContre;
+    uint256 voteAbstention;
+    mapping(address => Vote) voterChoices;
+}
+```
+
+## Événements
 
 ```solidity
 event ResolutionCreated(uint256 indexed resolutionId, string description);
 event ResolutionStatusChanged(uint256 indexed resolutionId, Status newStatus);
 event VoteRegistered(uint256 indexed resolutionId, address indexed voter, Vote choice);
-event NFTMinted(address indexed voter, uint256 indexed resolutionId, uint256 tokenId);
-event NFTMintFailed(address indexed voter, uint256 indexed resolutionId);
-```
-
-## États et Énumérations
-
-### Status des Résolutions
-```solidity
-enum Status { DRAFT, ACTIVE, CLOSED }
-```
-
-### Options de Vote
-```solidity
-enum Vote { NONE, POUR, CONTRE, ABSTENTION }
+event VoterAdded(address indexed account);
+event VoterRemoved(address indexed account);
 ```
 
 ## Sécurité
 
-### Précautions
-- Vérification des timestamps
-- Contrôle des accès
-- Gestion des erreurs de mint
+### Rôles
+- `DEFAULT_ADMIN_ROLE` : Administrateur système
+- `VOTER_ROLE` : Votants autorisés
+
+### Protections
+- Vérifications des timestamps
 - Protection contre les votes multiples
+- Limitation du nombre de votants par transaction (max 100)
+- Vérification des adresses nulles
 
-### Bonnes Pratiques
-- Tester sur un réseau de test avant le déploiement
-- Auditer le code avant utilisation en production
-- Maintenir une whitelist à jour
-- Surveiller les événements de mint échoués
+## Tests
 
-## Tests Recommandés
-
-```javascript
-// Exemple de tests à implémenter
-describe("Election Contract", () => {
-    it("Should create a resolution")
-    it("Should activate a resolution")
-    it("Should allow whitelisted addresses to vote")
-    it("Should distribute NFTs correctly")
-    it("Should handle pause mechanism")
-});
+```bash
+# Exécuter les tests
+npx hardhat test
 ```
-
-## Maintenance
-
-### Mises à Jour Recommandées
-- Vérification régulière des distributions de NFTs
-- Surveillance des événements d'échec
-- Mise à jour de la whitelist
-
-## Support
-
-Pour toute question ou assistance :
-- Créer une issue sur GitHub
-- Contacter l'équipe de développement
 
 ## Licence
 GPL-3.0
 
----
+## Support
+Pour toute question ou support, veuillez ouvrir une issue dans le repository GitHub.
 
-**Note** : Ce document est une référence technique. Pour une utilisation en production, assurez-vous de :
-1. Effectuer un audit de sécurité complet
-2. Tester exhaustivement sur les réseaux de test
-3. Vérifier la conformité réglementaire dans votre juridiction
+## Contribution
+Les contributions sont les bienvenues ! Veuillez consulter notre guide de contribution avant de soumettre une PR.
