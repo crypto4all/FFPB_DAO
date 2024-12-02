@@ -88,7 +88,7 @@ await election.closeResolution(resolutionId);
 await election.vote(resolutionId, 1); // 1=POUR, 2=CONTRE, 3=ABSTENTION
 
 // Vérifier son statut de votant
-const isVoter = await election.isVoter(address);
+const isVoter = await election.hasRole(VOTER_ROLE, address);
 ```
 
 ## Structure des Données
@@ -115,40 +115,132 @@ struct Resolution {
 }
 ```
 
-## Événements
-
-```solidity
-event ResolutionCreated(uint256 indexed resolutionId, string description);
-event ResolutionStatusChanged(uint256 indexed resolutionId, Status newStatus);
-event VoteRegistered(uint256 indexed resolutionId, address indexed voter, Vote choice);
-event VoterAdded(address indexed account);
-event VoterRemoved(address indexed account);
-```
-
-## Sécurité
-
-### Rôles
-- `DEFAULT_ADMIN_ROLE` : Administrateur système
-- `VOTER_ROLE` : Votants autorisés
-
-### Protections
-- Vérifications des timestamps
-- Protection contre les votes multiples
-- Limitation du nombre de votants par transaction (max 100)
-- Vérification des adresses nulles
-
 ## Tests
 
+### Installation des dépendances de test
+
 ```bash
-# Exécuter les tests
-npx hardhat test
+npm install --save-dev @nomicfoundation/hardhat-network-helpers chai
 ```
 
+### Structure des tests
+
+```javascript
+describe("ElectionSystem", function () {
+    // Tests d'initialisation
+    describe("Initialisation", function () {
+        // Vérifie le nom, symbole et rôles
+    });
+
+    // Tests de gestion des votants
+    describe("Gestion des votants", function () {
+        // Ajout/suppression de votants
+        // Gestion des permissions
+    });
+
+    // Tests des résolutions
+    describe("Gestion des résolutions", function () {
+        // Création et activation
+        // Validation des timestamps
+    });
+
+    // Tests du processus de vote
+    describe("Processus de vote", function () {
+        // Vote et vérification
+        // Contraintes temporelles
+        // Distribution NFT
+    });
+
+    // Tests des mécanismes de sécurité
+    describe("Fonctions de pause", function () {
+        // Pause/Unpause
+        // Restrictions pendant la pause
+    });
+});
+```
+
+### Exécution des tests
+
+```bash
+# Exécuter tous les tests
+npx hardhat test
+
+# Exécuter un fichier de test spécifique
+npx hardhat test test/ElectionSystem.test.js
+
+# Exécuter avec couverture de code
+npx hardhat coverage
+```
+
+### Cas de Tests Couverts
+
+1. **Initialisation**
+   - Déploiement correct du contrat
+   - Configuration des paramètres initiaux
+   - Attribution des rôles administrateurs
+
+2. **Gestion des Votants**
+   - Ajout d'un votant unique
+   - Ajout de plusieurs votants en masse
+   - Suppression de votants
+   - Vérification des permissions
+   - Comptage des votants
+
+3. **Gestion des Résolutions**
+   - Création de résolution
+   - Validation des timestamps
+   - Activation/désactivation
+   - Contraintes temporelles
+
+4. **Processus de Vote**
+   - Vote valide
+   - Prévention des votes multiples
+   - Respect des périodes de vote
+   - Distribution automatique des NFTs
+   - Comptabilisation des votes
+
+5. **Sécurité**
+   - Mécanisme de pause
+   - Contrôle des accès
+   - Gestion des erreurs
+   - Protection contre les votes non autorisés
+
+## Sécurité et Bonnes Pratiques
+
+### Gestion des Accès
+- Utilisation du pattern AccessControl d'OpenZeppelin
+- Séparation claire des rôles (admin, votant)
+- Vérifications systématiques des permissions
+
+### Protection contre les Attaques
+- ReentrancyGuard pour les fonctions critiques
+- Validation des entrées utilisateur
+- Gestion sécurisée des timestamps
+
+### Gestion des Erreurs
+- Messages d'erreur explicites
+- Vérifications des conditions préalables
+- Gestion des cas limites
+
+## Maintenance et Mises à Jour
+
+### Mises à Jour
+- Système de pause pour maintenance
+- Possibilité de mise à jour des rôles
+- Flexibilité dans la gestion des résolutions
+
+### Surveillance
+- Événements pour toutes les actions importantes
+- Traçabilité des votes et des modifications
+- Métriques de participation
+
+## Support et Contact
+
+Pour toute question ou support :
+- GitHub Issues : [URL_DU_REPO]/issues
+- Email : support@vote-nft.com
+- Documentation technique complète : [URL_DOCUMENTATION]
+
 ## Licence
-GPL-3.0
 
-## Support
-Pour toute question ou support, veuillez ouvrir une issue dans le repository GitHub.
-
-## Contribution
-Les contributions sont les bienvenues ! Veuillez consulter notre guide de contribution avant de soumettre une PR.
+Ce projet est sous licence GPL-3.0. Voir le fichier LICENSE pour plus de détails.
