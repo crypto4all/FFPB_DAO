@@ -237,9 +237,8 @@ npx hardhat coverage
 ## Support et Contact
 
 Pour toute question ou support :
-- GitHub Issues : [URL_DU_REPO]/issues
-- Email : support@vote-nft.com
-- Documentation technique complète : [URL_DOCUMENTATION]
+- GitHub Issues : https://github.com/crypto4all/FFPB_DAO/tree/main/issues
+- Email : christophe.ozcan@crypto4all.com
 
 ## Licence
 
