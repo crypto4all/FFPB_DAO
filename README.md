@@ -1,108 +1,149 @@
-# Système de Vote sur la Blockchain Ethereum
+# Système de Vote avec NFT - Documentation
 
 ## Description
-Ce projet implémente un système de vote décentralisé sur la blockchain Ethereum permettant de gérer des résolutions avec trois options de vote : POUR, CONTRE et ABSTENTION. Le système inclut une gestion des droits d'accès et une liste blanche des votants.
+Ce système de vote sur la blockchain Ethereum permet de gérer des résolutions avec distribution automatique de NFTs aux votants. Le système inclut une whitelist, un mécanisme de pause et une gestion complète du cycle de vie des votes.
 
-## Fonctionnalités
+## Fonctionnalités Principales
 
-### Gestion des Droits
-- Système de propriété (Owner)
-- Liste blanche des votants
-- Seul le propriétaire peut ajouter des résolutions
-- Seules les adresses en liste blanche peuvent voter
+### 1. Gestion des Résolutions
+- Création de nouvelles résolutions
+- Activation/désactivation des résolutions
+- Vote (Pour, Contre, Abstention)
+- Clôture automatique des votes
 
-### Résolutions
-- Création de résolutions avec période de vote définie
-- Trois options de vote : POUR, CONTRE, ABSTENTION
-- États des résolutions : PENDING, ACTIVE, CLOSED
-- Un votant ne peut voter qu'une seule fois par résolution
+### 2. Système de NFT
+- Distribution automatique de NFTs aux votants
+- Mécanisme de pause en cas de problème
+- Traçabilité des distributions
 
-## Fonctions Principales
+### 3. Sécurité
+- Système de whitelist
+- Contrôles d'accès (Ownable)
+- Gestion des erreurs
 
-### Gestion de la Liste Blanche
-```solidity
-function addToWhitelist(address[] calldata _beneficiaries) public onlyOwner
-function removeFromWhitelist(address _beneficiary) public onlyOwner
-function isWhitelisted(address _beneficiary) public view returns (bool)
-```
+## Installation
 
-### Gestion des Résolutions
-```solidity
-function addResolution(string memory _description, uint256 _startTime, uint256 _endTime) public onlyOwner
-function activateResolution(uint256 _resolutionId) public onlyOwner
-function closeResolution(uint256 _resolutionId) public onlyOwner
-```
-
-### Vote
-```solidity
-function voteResolution(uint256 _resolutionId, Vote _choice) public onlyWhitelisted
-```
-
-### Consultation
-```solidity
-function getResolutionDetails(uint256 _resolutionId) public view returns (...)
-function getVoterChoice(uint256 _resolutionId, address _voter) public view returns (Vote)
-```
-
-## Installation et Déploiement
-
-1. Prérequis
-   - Node.js
-   - Truffle ou Hardhat
-   - Un portefeuille Ethereum (ex: MetaMask)
-
-2. Installation
 ```bash
-npm install
+npm install @openzeppelin/contracts
 ```
 
-3. Compilation
-```bash
-truffle compile
-# ou
-npx hardhat compile
-```
+## Déploiement
 
-4. Déploiement
-```bash
-truffle migrate --network <network_name>
-# ou
-npx hardhat run scripts/deploy.js --network <network_name>
+```solidity
+Election election = new Election(
+    "VoteNFT",      // Nom du NFT
+    "VOTE",         // Symbole du NFT
+    "https://api.vote-nft.com/metadata/"  // URI de base
+);
 ```
 
 ## Utilisation
 
-1. Déploiement du contrat
-2. L'owner ajoute des adresses à la liste blanche
-3. L'owner crée une résolution
-4. L'owner active la résolution
-5. Les votants whitelistés peuvent voter
-6. L'owner clôture la résolution une fois la période de vote terminée
+### 1. Configuration Initiale
+```solidity
+// Ajouter une adresse à la whitelist
+election.addToWhitelist(address);
+
+// Créer une résolution
+election.createResolution(
+    "Description de la résolution",
+    startTimestamp,
+    endTimestamp
+);
+```
+
+### 2. Gestion des Votes
+```solidity
+// Activer une résolution
+election.activateResolution(resolutionId);
+
+// Voter
+election.vote(resolutionId, Vote.POUR);  // ou CONTRE, ABSTENTION
+
+// Clôturer une résolution
+election.closeResolution(resolutionId);
+```
+
+### 3. Gestion des NFTs
+```solidity
+// Mettre en pause la distribution
+election.voteNFT.pause();
+
+// Reprendre la distribution
+election.voteNFT.unpause();
+
+// Vérifier si un votant a reçu son NFT
+bool hasNFT = election.hasReceivedNFT(resolutionId, voterAddress);
+```
+
+## Structure des Événements
+
+```solidity
+event ResolutionCreated(uint256 indexed resolutionId, string description);
+event ResolutionStatusChanged(uint256 indexed resolutionId, Status newStatus);
+event VoteRegistered(uint256 indexed resolutionId, address indexed voter, Vote choice);
+event NFTMinted(address indexed voter, uint256 indexed resolutionId, uint256 tokenId);
+event NFTMintFailed(address indexed voter, uint256 indexed resolutionId);
+```
+
+## États et Énumérations
+
+### Status des Résolutions
+```solidity
+enum Status { DRAFT, ACTIVE, CLOSED }
+```
+
+### Options de Vote
+```solidity
+enum Vote { NONE, POUR, CONTRE, ABSTENTION }
+```
 
 ## Sécurité
 
-- Vérifications des droits d'accès
+### Précautions
+- Vérification des timestamps
+- Contrôle des accès
+- Gestion des erreurs de mint
 - Protection contre les votes multiples
-- Contrôles temporels sur les périodes de vote
-- Validation des entrées
 
-## Tests
+### Bonnes Pratiques
+- Tester sur un réseau de test avant le déploiement
+- Auditer le code avant utilisation en production
+- Maintenir une whitelist à jour
+- Surveiller les événements de mint échoués
 
-```bash
-truffle test
-# ou
-npx hardhat test
+## Tests Recommandés
+
+```javascript
+// Exemple de tests à implémenter
+describe("Election Contract", () => {
+    it("Should create a resolution")
+    it("Should activate a resolution")
+    it("Should allow whitelisted addresses to vote")
+    it("Should distribute NFTs correctly")
+    it("Should handle pause mechanism")
+});
 ```
 
-## Versions
-- Solidity : ^0.8.24
-- Node.js : v14+ recommandé
+## Maintenance
+
+### Mises à Jour Recommandées
+- Vérification régulière des distributions de NFTs
+- Surveillance des événements d'échec
+- Mise à jour de la whitelist
+
+## Support
+
+Pour toute question ou assistance :
+- Créer une issue sur GitHub
+- Contacter l'équipe de développement
 
 ## Licence
 GPL-3.0
 
-## Auteur
-[Votre Nom]
+---
 
-## Avertissement
-Ce code est fourni à titre d'exemple et doit être audité avant toute utilisation en production.
+**Note** : Ce document est une référence technique. Pour une utilisation en production, assurez-vous de :
+1. Effectuer un audit de sécurité complet
+2. Tester exhaustivement sur les réseaux de test
+3. Vérifier la conformité réglementaire dans votre juridiction
