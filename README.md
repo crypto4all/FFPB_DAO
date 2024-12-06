@@ -1,3 +1,6 @@
+Voici le README.md mis à jour avec les nouvelles fonctionnalités :
+
+```markdown
 # Système de Vote NFT - Documentation
 
 ## Description
@@ -10,17 +13,19 @@ Système de vote décentralisé sur la blockchain Ethereum utilisant les NFTs co
 - Ajout/suppression de votants (individuel ou en masse)
 - Activation/clôture des votes
 - Système de pause d'urgence
+- Gestion des périodes de vote avec timestamps
 
 ### Votants
 - Vote sur les résolutions (Pour, Contre, Abstention)
 - Réception automatique de NFT après le vote
 - Vérification du statut de votant
+- Participation unique par résolution
 
 ### Sécurité
 - Gestion des rôles avec AccessControl
 - Protection contre la réentrance
 - Système de pause
-- Utilisation de SafeMath pour les calculs
+- Vérifications temporelles strictes
 
 ## Prérequis Techniques
 
@@ -79,16 +84,25 @@ await election.activateResolution(resolutionId);
 
 // Clôturer une résolution
 await election.closeResolution(resolutionId);
+
+// Mettre en pause le système
+await election.pause();
+
+// Reprendre le système
+await election.unpause();
 ```
 
 ### Votants
 
 ```javascript
 // Voter sur une résolution
-await election.vote(resolutionId, 1); // 1=POUR, 2=CONTRE, 3=ABSTENTION
+await election.vote(resolutionId, VoteChoice.FOR); // FOR, AGAINST, ABSTAIN
 
-// Vérifier son statut de votant
-const isVoter = await election.hasRole(VOTER_ROLE, address);
+// Consulter les détails d'une résolution
+const details = await election.getResolutionDetails(resolutionId);
+
+// Vérifier son NFT
+const balance = await election.balanceOf(voterAddress);
 ```
 
 ## Structure des Données
@@ -97,7 +111,7 @@ const isVoter = await election.hasRole(VOTER_ROLE, address);
 
 ```solidity
 enum Status { DRAFT, ACTIVE, CLOSED }
-enum Vote { NONE, POUR, CONTRE, ABSTENTION }
+enum VoteChoice { NONE, FOR, AGAINST, ABSTAIN }
 ```
 
 ### Structure de Résolution
@@ -108,10 +122,10 @@ struct Resolution {
     uint256 startTime;
     uint256 endTime;
     Status status;
-    uint256 votePour;
-    uint256 voteContre;
-    uint256 voteAbstention;
-    mapping(address => Vote) voterChoices;
+    uint256 votesFor;
+    uint256 votesAgainst;
+    uint256 votesAbstain;
+    mapping(address => bool) hasVoted;
 }
 ```
 
@@ -123,50 +137,11 @@ struct Resolution {
 npm install --save-dev @nomicfoundation/hardhat-network-helpers chai
 ```
 
-### Structure des tests
-
-```javascript
-describe("ElectionSystem", function () {
-    // Tests d'initialisation
-    describe("Initialisation", function () {
-        // Vérifie le nom, symbole et rôles
-    });
-
-    // Tests de gestion des votants
-    describe("Gestion des votants", function () {
-        // Ajout/suppression de votants
-        // Gestion des permissions
-    });
-
-    // Tests des résolutions
-    describe("Gestion des résolutions", function () {
-        // Création et activation
-        // Validation des timestamps
-    });
-
-    // Tests du processus de vote
-    describe("Processus de vote", function () {
-        // Vote et vérification
-        // Contraintes temporelles
-        // Distribution NFT
-    });
-
-    // Tests des mécanismes de sécurité
-    describe("Fonctions de pause", function () {
-        // Pause/Unpause
-        // Restrictions pendant la pause
-    });
-});
-```
-
 ### Exécution des tests
 
 ```bash
 # Exécuter tous les tests
 npx hardhat test
-
-# Exécuter un fichier de test spécifique
-npx hardhat test test/ElectionSystem.test.js
 
 # Exécuter avec couverture de code
 npx hardhat coverage
@@ -175,64 +150,55 @@ npx hardhat coverage
 ### Cas de Tests Couverts
 
 1. **Initialisation**
-   - Déploiement correct du contrat
+   - Déploiement du contrat
    - Configuration des paramètres initiaux
-   - Attribution des rôles administrateurs
+   - Attribution des rôles
 
 2. **Gestion des Votants**
-   - Ajout d'un votant unique
-   - Ajout de plusieurs votants en masse
-   - Suppression de votants
-   - Vérification des permissions
+   - Ajout/suppression de votants
+   - Gestion des permissions
    - Comptage des votants
 
 3. **Gestion des Résolutions**
-   - Création de résolution
-   - Validation des timestamps
-   - Activation/désactivation
-   - Contraintes temporelles
+   - Création et cycle de vie des résolutions
+   - Validation des périodes de vote
+   - Activation et clôture
 
 4. **Processus de Vote**
-   - Vote valide
-   - Prévention des votes multiples
-   - Respect des périodes de vote
-   - Distribution automatique des NFTs
-   - Comptabilisation des votes
+   - Vote et vérification
+   - Distribution des NFTs
+   - Contraintes temporelles
 
 5. **Sécurité**
    - Mécanisme de pause
-   - Contrôle des accès
-   - Gestion des erreurs
-   - Protection contre les votes non autorisés
+   - Protection contre la réentrance
+   - Gestion des accès
 
 ## Sécurité et Bonnes Pratiques
 
-### Gestion des Accès
-- Utilisation du pattern AccessControl d'OpenZeppelin
-- Séparation claire des rôles (admin, votant)
-- Vérifications systématiques des permissions
-
-### Protection contre les Attaques
-- ReentrancyGuard pour les fonctions critiques
-- Validation des entrées utilisateur
-- Gestion sécurisée des timestamps
-
-### Gestion des Erreurs
-- Messages d'erreur explicites
-- Vérifications des conditions préalables
-- Gestion des cas limites
+- Utilisation d'OpenZeppelin pour les standards de sécurité
+- Vérifications systématiques des permissions et conditions
+- Protection contre les attaques courantes
+- Système de pause d'urgence
+- Émission d'événements pour la traçabilité
 
 ## Maintenance et Mises à Jour
 
-### Mises à Jour
-- Système de pause pour maintenance
-- Possibilité de mise à jour des rôles
-- Flexibilité dans la gestion des résolutions
+- Système modulaire permettant les évolutions
+- Documentation complète du code
+- Tests exhaustifs pour la maintenance
 
-### Surveillance
-- Événements pour toutes les actions importantes
-- Traçabilité des votes et des modifications
-- Métriques de participation
+## Contribution
+
+Les contributions sont les bienvenues. Veuillez suivre le processus standard de fork et pull request.
+```
+
+Les principales mises à jour incluent :
+- Ajout des nouvelles fonctionnalités de sécurité
+- Mise à jour des structures de données
+- Amélioration de la documentation des tests
+- Clarification des processus de vote et de gestion des NFTs
+- Ajout des informations sur le système de pause
 
 ## Support et Contact
 
