@@ -1,6 +1,3 @@
-Voici le README.md mis à jour avec les nouvelles fonctionnalités :
-
-```markdown
 # Système de Vote NFT - Documentation
 
 ## Description
