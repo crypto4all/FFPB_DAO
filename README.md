@@ -102,8 +102,10 @@ Avant tout déploiement en production :
 ## License
 GPL-3.0
 
-## Contact
-[Votre contact]
+## Support et Contact
+Pour toute question ou support :
+- GitHub Issues : https://github.com/crypto4all/FFPB_DAO/tree/main/issues
+- Email : christophe.ozcan@crypto4all.com
 
 ## Contribution
 Les contributions sont les bienvenues. Veuillez suivre ces étapes :
