@@ -3,149 +3,181 @@ const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("ElectionSystem", function () {
+    let ElectionSystem;
     let electionSystem;
     let owner;
     let voter1;
     let voter2;
-    let voter3;
-    let nonVoter;
-    
-    const name = "VoteNFT";
-    const symbol = "VOTE";
-    const baseURI = "https://example.com/token/";
+    let addr3;
+
+    // Configuration constantes
+    const NAME = "Election Certificate";
+    const SYMBOL = "ELECT";
+    const MIN_TOKENS = 1;
+    const BASE_URI = "https://api.election-system.com/certificates/";
+    const VOTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("VOTER_ROLE"));
 
     beforeEach(async function () {
-        [owner, voter1, voter2, voter3, nonVoter] = await ethers.getSigners();
-        
-        const ElectionSystem = await ethers.getContractFactory("ElectionSystem");
-        electionSystem = await ElectionSystem.deploy(name, symbol, baseURI);
+        // Récupération des comptes de test
+        [owner, voter1, voter2, addr3] = await ethers.getSigners();
+
+        // Déploiement du contrat
+        const ElectionSystemFactory = await ethers.getContractFactory("ElectionSystem");
+        electionSystem = await ElectionSystemFactory.deploy(NAME, SYMBOL, MIN_TOKENS, BASE_URI);
         await electionSystem.waitForDeployment();
+
+        // Configuration des rôles de votants
+        await electionSystem.grantRole(VOTER_ROLE, voter1.address);
+        await electionSystem.grantRole(VOTER_ROLE, voter2.address);
     });
 
-    describe("Initialisation", function () {
-        it("Devrait correctement initialiser le contrat", async function () {
-            expect(await electionSystem.name()).to.equal(name);
-            expect(await electionSystem.symbol()).to.equal(symbol);
-            expect(await electionSystem.getVotersCount()).to.equal(0);
+    describe("Déploiement", function () {
+        it("Devrait définir le bon propriétaire", async function () {
+            expect(await electionSystem.hasRole(await electionSystem.DEFAULT_ADMIN_ROLE(), owner.address)).to.be.true;
+        });
+
+        it("Devrait initialiser avec les bons paramètres", async function () {
+            expect(await electionSystem.name()).to.equal(NAME);
+            expect(await electionSystem.symbol()).to.equal(SYMBOL);
+            expect(await electionSystem.minimumTokensRequired()).to.equal(MIN_TOKENS);
+            expect(await electionSystem.getCertificateBaseURI()).to.equal(BASE_URI);
         });
     });
 
-    describe("Gestion des votants", function () {
-        it("Devrait permettre d'ajouter un votant", async function () {
-            await electionSystem.addVoter(voter1.address);
-            expect(await electionSystem.getVotersCount()).to.equal(1);
-            expect(await electionSystem.hasRole(await electionSystem.VOTER_ROLE(), voter1.address)).to.be.true;
+    describe("Configuration de l'assemblée", function () {
+        const assemblyTitle = "Assemblée Générale 2024";
+        const assemblyDescription = "Description de l'assemblée";
+        let startTime, endTime;
+
+        beforeEach(async function () {
+            startTime = (await time.latest()) + 3600; // Début dans 1 heure
+            endTime = startTime + 7200; // Durée de 2 heures
         });
 
-        it("Devrait permettre d'ajouter plusieurs votants", async function () {
-            await electionSystem.addVoters([voter1.address, voter2.address, voter3.address]);
-            expect(await electionSystem.getVotersCount()).to.equal(3);
+        it("Devrait permettre à l'admin de configurer une assemblée", async function () {
+            await expect(electionSystem.configureAssembly(
+                assemblyTitle,
+                assemblyDescription,
+                startTime,
+                endTime
+            )).to.emit(electionSystem, "AssemblyConfigured")
+              .withArgs(assemblyTitle, startTime, endTime);
+
+            const configuredAssembly = await electionSystem.assemblyTitle();
+            expect(configuredAssembly).to.equal(assemblyTitle);
         });
 
-        it("Devrait permettre de supprimer un votant", async function () {
-            await electionSystem.addVoter(voter1.address);
-            await electionSystem.removeVoter(voter1.address);
-            expect(await electionSystem.getVotersCount()).to.equal(0);
-            expect(await electionSystem.hasRole(await electionSystem.VOTER_ROLE(), voter1.address)).to.be.false;
-        });
-
-        it("Ne devrait pas permettre d'ajouter une adresse nulle", async function () {
-            await expect(electionSystem.addVoter(ethers.ZeroAddress))
-                .to.be.revertedWith("Adresse nulle non autorisee");
-        });
-
-        it("Ne devrait pas permettre d'ajouter un votant déjà existant", async function () {
-            await electionSystem.addVoter(voter1.address);
-            await expect(electionSystem.addVoter(voter1.address))
-                .to.be.revertedWith("Deja un votant");
+        it("Ne devrait pas permettre une configuration par un non-admin", async function () {
+            await expect(electionSystem.connect(voter1).configureAssembly(
+                assemblyTitle,
+                assemblyDescription,
+                startTime,
+                endTime
+            )).to.be.revertedWith(/AccessControl: account .* is missing role .*/);
         });
     });
 
     describe("Gestion des résolutions", function () {
-        it("Devrait créer une résolution", async function () {
-            const startTime = await time.latest() + 3600; // Dans 1 heure
-            const endTime = startTime + 3600; // Durée de 1 heure
-            
-            await electionSystem.createResolution("Test Resolution", startTime, endTime);
-            
-            const resolution = await electionSystem.getResolutionDetails(0);
-            expect(resolution.description).to.equal("Test Resolution");
-            expect(resolution.startTime).to.equal(startTime);
-            expect(resolution.endTime).to.equal(endTime);
-            expect(resolution.status).to.equal(0); // DRAFT
+        const resolutionTitle = "Résolution #1";
+        const resolutionDescription = "Description de la résolution";
+        let assemblyStart, assemblyEnd, resolutionStart, resolutionEnd;
+
+        beforeEach(async function () {
+            assemblyStart = (await time.latest()) + 3600;
+            assemblyEnd = assemblyStart + 86400;
+            resolutionStart = assemblyStart + 3600;
+            resolutionEnd = assemblyEnd - 3600;
+
+            await electionSystem.configureAssembly(
+                "Assemblée Test",
+                "Description Test",
+                assemblyStart,
+                assemblyEnd
+            );
         });
 
-        it("Devrait activer une résolution", async function () {
-            const startTime = await time.latest() + 3600;
-            const endTime = startTime + 3600;
-            
-            await electionSystem.createResolution("Test Resolution", startTime, endTime);
-            await electionSystem.activateResolution(0);
-            
-            const resolution = await electionSystem.getResolutionDetails(0);
-            expect(resolution.status).to.equal(1); // ACTIVE
-        });
+        it("Devrait créer une nouvelle résolution", async function () {
+            await expect(electionSystem.createResolution(
+                resolutionTitle,
+                resolutionDescription,
+                resolutionStart,
+                resolutionEnd
+            )).to.emit(electionSystem, "ResolutionCreated")
+              .withArgs(0, resolutionTitle);
 
-        it("Devrait clôturer une résolution", async function () {
-            const startTime = await time.latest() + 3600;
-            const endTime = startTime + 3600;
-            
-            await electionSystem.createResolution("Test Resolution", startTime, endTime);
-            await electionSystem.activateResolution(0);
-            await electionSystem.closeResolution(0);
-            
             const resolution = await electionSystem.getResolutionDetails(0);
-            expect(resolution.status).to.equal(2); // CLOSED
+            expect(resolution.title).to.equal(resolutionTitle);
         });
     });
 
-    describe("Système de vote", function () {
+    describe("Processus de vote", function () {
+        let resolutionId;
+        let assemblyStart, assemblyEnd, resolutionStart, resolutionEnd;
+
         beforeEach(async function () {
-            await electionSystem.addVoter(voter1.address);
-            const startTime = await time.latest() + 100;
-            const endTime = startTime + 3600;
-            await electionSystem.createResolution("Test Resolution", startTime, endTime);
-            await electionSystem.activateResolution(0);
-            await time.increase(100); // Avance le temps pour commencer la période de vote
+            assemblyStart = (await time.latest()) + 3600;
+            assemblyEnd = assemblyStart + 86400;
+            resolutionStart = assemblyStart + 3600;
+            resolutionEnd = assemblyEnd - 3600;
+
+            await electionSystem.configureAssembly(
+                "Assemblée Test",
+                "Description Test",
+                assemblyStart,
+                assemblyEnd
+            );
+
+            await electionSystem.createResolution(
+                "Résolution Test",
+                "Description Test",
+                resolutionStart,
+                resolutionEnd
+            );
+            resolutionId = 0;
         });
 
-        it("Devrait permettre de voter", async function () {
-            await electionSystem.connect(voter1).vote(0, 1); // Vote FOR
-            
-            const resolution = await electionSystem.getResolutionDetails(0);
-            expect(resolution.votesFor).to.equal(1);
-            expect(await electionSystem.balanceOf(voter1.address)).to.equal(1); // Vérifie le NFT
+        it("Devrait permettre aux votants autorisés de voter", async function () {
+            await time.increaseTo(resolutionStart);
+
+            await expect(electionSystem.connect(voter1).vote(resolutionId, 1))
+                .to.emit(electionSystem, "VoteCast")
+                .withArgs(resolutionId, voter1.address, 1);
         });
 
         it("Ne devrait pas permettre de voter deux fois", async function () {
-            await electionSystem.connect(voter1).vote(0, 1);
-            await expect(electionSystem.connect(voter1).vote(0, 1))
-                .to.be.revertedWith("A deja vote");
-        });
+            await time.increaseTo(resolutionStart);
 
-        it("Ne devrait pas permettre aux non-votants de voter", async function () {
-            await expect(electionSystem.connect(nonVoter).vote(0, 1))
-                .to.be.revertedWith("AccessControl:");
+            await electionSystem.connect(voter1).vote(resolutionId, 1);
+            await expect(electionSystem.connect(voter1).vote(resolutionId, 2))
+                .to.be.revertedWith("Already voted");
         });
     });
 
-    describe("Fonctionnalités de pause", function () {
-        it("Devrait permettre de mettre en pause et reprendre le contrat", async function () {
+    describe("Gestion des certificats NFT", function () {
+        it("Devrait émettre un certificat après tous les votes", async function () {
+            // Configuration et test à implémenter
+        });
+
+        it("Devrait permettre la mise à jour de l'URI de base", async function () {
+            const newBaseURI = "https://new-api.election-system.com/certificates/";
+            await electionSystem.setCertificateBaseURI(newBaseURI);
+            expect(await electionSystem.getCertificateBaseURI()).to.equal(newBaseURI);
+        });
+    });
+
+    describe("Fonctions de pause", function () {
+        it("Devrait permettre à l'admin de mettre en pause", async function () {
             await electionSystem.pause();
             expect(await electionSystem.paused()).to.be.true;
-            
+        });
+
+        it("Devrait permettre à l'admin de reprendre", async function () {
+            await electionSystem.pause();
             await electionSystem.unpause();
             expect(await electionSystem.paused()).to.be.false;
         });
 
         it("Ne devrait pas permettre de voter pendant la pause", async function () {
-            await electionSystem.addVoter(voter1.address);
-            const startTime = await time.latest() + 100;
-            const endTime = startTime + 3600;
-            await electionSystem.createResolution("Test Resolution", startTime, endTime);
-            await electionSystem.activateResolution(0);
-            await time.increase(100);
-            
             await electionSystem.pause();
             await expect(electionSystem.connect(voter1).vote(0, 1))
                 .to.be.revertedWith("Pausable: paused");
