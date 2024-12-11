@@ -3,173 +3,246 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
-contract ElectionSystem is AccessControl, ReentrancyGuard, ERC721, Pausable {
-    // Définition des rôles
+contract ElectionSystem is AccessControl, ReentrancyGuard, ERC721URIStorage, Pausable {
+    using Counters for Counters.Counter;
+    using Strings for uint256;
+
+    // Compteurs
+    Counters.Counter private _tokenIdCounter;
+    Counters.Counter private _resolutionCounter;
+
+    // URI de base pour les certificats
+    string private _certificateBaseURI;
+
+    // Rôles
     bytes32 public constant VOTER_ROLE = keccak256("VOTER_ROLE");
 
     // Énumérations
-    enum Status { DRAFT, ACTIVE, CLOSED }
-    enum VoteChoice { NONE, FOR, AGAINST, ABSTAIN }
+    enum VoteChoice { NONE, POUR, CONTRE, ABSTENTION }
+    enum ResolutionStatus { DRAFT, ACTIVE, CLOSED }
 
-    // Structure de résolution
+    // Structures
     struct Resolution {
+        string title;
         string description;
         uint256 startTime;
         uint256 endTime;
-        Status status;
-        uint256 votesFor;
-        uint256 votesAgainst;
-        uint256 votesAbstain;
+        ResolutionStatus status;
+        uint256 votesPour;
+        uint256 votesContre;
+        uint256 votesAbstention;
         mapping(address => bool) hasVoted;
+        mapping(address => VoteChoice) voterChoices;
+    }
+
+    struct VoteRecord {
+        uint256 resolutionId;
+        VoteChoice choice;
+        uint256 timestamp;
     }
 
     // Variables d'état
-    uint256 private _votersCount;
-    uint256 private _resolutionCounter;
-    uint256 private _tokenIdCounter;
-    string private _baseTokenURI;
     mapping(uint256 => Resolution) public resolutions;
+    mapping(address => VoteRecord[]) public voterHistory;
+    uint256 public assemblyStartTime;
+    uint256 public assemblyEndTime;
+    string public assemblyTitle;
+    string public assemblyDescription;
+    uint256 public minimumTokensRequired;
 
     // Événements
-    event VoterAdded(address indexed voter);
-    event VoterRemoved(address indexed voter);
-    event ResolutionCreated(uint256 indexed resolutionId, string description);
-    event ResolutionActivated(uint256 indexed resolutionId);
-    event ResolutionClosed(uint256 indexed resolutionId);
-    event Voted(uint256 indexed resolutionId, address indexed voter, VoteChoice choice);
-    event NFTMinted(address indexed voter, uint256 tokenId);
+    event ResolutionCreated(uint256 indexed resolutionId, string title);
+    event VoteCast(uint256 indexed resolutionId, address indexed voter, VoteChoice choice);
+    event VoteCertificateIssued(address indexed voter, uint256 tokenId);
+    event AssemblyConfigured(string title, uint256 startTime, uint256 endTime);
 
-    // Constructeur
-    constructor(string memory name, string memory symbol, string memory baseURI) 
-        ERC721(name, symbol) 
-    {
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 _minimumTokensRequired,
+        string memory certificateBaseURI
+    ) ERC721(name, symbol) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _baseTokenURI = baseURI;
+        minimumTokensRequired = _minimumTokensRequired;
+        _certificateBaseURI = certificateBaseURI;
     }
 
-    // Modificateurs
-    modifier resolutionExists(uint256 resolutionId) {
-        require(resolutionId < _resolutionCounter, "Resolution inexistante");
-        _;
-    }
-
-    modifier onlyDuringVotingPeriod(uint256 resolutionId) {
-        require(
-            resolutions[resolutionId].status == Status.ACTIVE &&
-            block.timestamp >= resolutions[resolutionId].startTime &&
-            block.timestamp <= resolutions[resolutionId].endTime,
-            "Periode de vote invalide"
-        );
-        _;
-    }
-
-    // Fonctions de gestion des votants
-    function addVoter(address _voter) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_voter != address(0), "Adresse nulle non autorisee");
-        require(!hasRole(VOTER_ROLE, _voter), "Deja un votant");
+    // Configuration de l'assemblée
+    function configureAssembly(
+        string memory _title,
+        string memory _description,
+        uint256 _startTime,
+        uint256 _endTime
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_startTime > block.timestamp, "Start time must be in the future");
+        require(_endTime > _startTime, "End time must be after start time");
         
-        _grantRole(VOTER_ROLE, _voter);
-        _votersCount++;
-        
-        emit VoterAdded(_voter);
+        assemblyTitle = _title;
+        assemblyDescription = _description;
+        assemblyStartTime = _startTime;
+        assemblyEndTime = _endTime;
+
+        emit AssemblyConfigured(_title, _startTime, _endTime);
     }
 
-    function addVoters(address[] calldata _voters) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        for(uint i = 0; i < _voters.length; i++) {
-            addVoter(_voters[i]);
-        }
-    }
-
-    function removeVoter(address _voter) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(hasRole(VOTER_ROLE, _voter), "Pas un votant");
-        
-        revokeRole(VOTER_ROLE, _voter);
-        _votersCount--;
-        
-        emit VoterRemoved(_voter);
-    }
-
-    // Fonctions de gestion des résolutions
+    // Création d'une résolution
     function createResolution(
+        string memory title,
         string memory description,
         uint256 startTime,
         uint256 endTime
-    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(startTime > block.timestamp, "Date de debut invalide");
-        require(endTime > startTime, "Date de fin invalide");
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(startTime >= assemblyStartTime, "Start time before assembly start");
+        require(endTime <= assemblyEndTime, "End time after assembly end");
 
-        uint256 resolutionId = _resolutionCounter++;
+        uint256 resolutionId = _resolutionCounter.current();
         Resolution storage newResolution = resolutions[resolutionId];
         
+        newResolution.title = title;
         newResolution.description = description;
         newResolution.startTime = startTime;
         newResolution.endTime = endTime;
-        newResolution.status = Status.DRAFT;
+        newResolution.status = ResolutionStatus.DRAFT;
 
-        emit ResolutionCreated(resolutionId, description);
+        _resolutionCounter.increment();
+        emit ResolutionCreated(resolutionId, title);
     }
 
-    function activateResolution(uint256 resolutionId) 
-        external 
-        onlyRole(DEFAULT_ADMIN_ROLE) 
-        resolutionExists(resolutionId) 
-    {
-        require(resolutions[resolutionId].status == Status.DRAFT, "Statut invalide");
-        resolutions[resolutionId].status = Status.ACTIVE;
-        emit ResolutionActivated(resolutionId);
-    }
-
-    function closeResolution(uint256 resolutionId) 
-        external 
-        onlyRole(DEFAULT_ADMIN_ROLE) 
-        resolutionExists(resolutionId) 
-    {
-        require(resolutions[resolutionId].status == Status.ACTIVE, "Statut invalide");
-        resolutions[resolutionId].status = Status.CLOSED;
-        emit ResolutionClosed(resolutionId);
-    }
-
-    // Fonction de vote
-    function vote(uint256 resolutionId, VoteChoice choice) 
-        external 
-        whenNotPaused
-        nonReentrant
-        onlyRole(VOTER_ROLE)
-        resolutionExists(resolutionId)
-        onlyDuringVotingPeriod(resolutionId)
-    {
-        require(!resolutions[resolutionId].hasVoted[msg.sender], "A deja vote");
-        require(choice != VoteChoice.NONE, "Vote invalide");
-
+    // Vote sur une résolution
+    function vote(
+        uint256 resolutionId,
+        VoteChoice choice
+    ) external whenNotPaused nonReentrant onlyRole(VOTER_ROLE) {
         Resolution storage resolution = resolutions[resolutionId];
-        resolution.hasVoted[msg.sender] = true;
+        
+        require(resolution.status == ResolutionStatus.ACTIVE, "Resolution not active");
+        require(block.timestamp >= resolution.startTime, "Voting not started");
+        require(block.timestamp <= resolution.endTime, "Voting ended");
+        require(!resolution.hasVoted[msg.sender], "Already voted");
+        require(choice != VoteChoice.NONE, "Invalid vote choice");
 
-        if (choice == VoteChoice.FOR) {
-            resolution.votesFor++;
-        } else if (choice == VoteChoice.AGAINST) {
-            resolution.votesAgainst++;
+        resolution.hasVoted[msg.sender] = true;
+        resolution.voterChoices[msg.sender] = choice;
+
+        if (choice == VoteChoice.POUR) {
+            resolution.votesPour++;
+        } else if (choice == VoteChoice.CONTRE) {
+            resolution.votesContre++;
         } else {
-            resolution.votesAbstain++;
+            resolution.votesAbstention++;
         }
 
-        // Mint NFT pour le votant
-        _mintVoteNFT(msg.sender);
+        voterHistory[msg.sender].push(VoteRecord({
+            resolutionId: resolutionId,
+            choice: choice,
+            timestamp: block.timestamp
+        }));
+
+        emit VoteCast(resolutionId, msg.sender, choice);
+
+        if (_isLastVote(msg.sender)) {
+            _issueVoteCertificate(msg.sender);
+        }
+    }
+
+    // Fonction pour mettre à jour l'URI de base
+    function setCertificateBaseURI(string memory newBaseURI) 
+        external 
+        onlyRole(DEFAULT_ADMIN_ROLE) 
+    {
+        _certificateBaseURI = newBaseURI;
+    }
+
+    // Vérification du dernier vote
+    function _isLastVote(address voter) internal view returns (bool) {
+        uint256 totalResolutions = _resolutionCounter.current();
+        uint256 votedCount = 0;
         
-        emit Voted(resolutionId, msg.sender, choice);
+        for (uint256 i = 0; i < totalResolutions; i++) {
+            if (resolutions[i].hasVoted[voter]) {
+                votedCount++;
+            }
+        }
+        
+        return votedCount == totalResolutions;
     }
 
-    // Fonctions NFT
-    function _mintVoteNFT(address voter) internal {
-        uint256 tokenId = _tokenIdCounter++;
+    // Émission du certificat de vote
+    function _issueVoteCertificate(address voter) internal {
+        uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        
         _safeMint(voter, tokenId);
-        emit NFTMinted(voter, tokenId);
+        
+        string memory tokenURI = _generateCertificateURI(voter, tokenId);
+        _setTokenURI(tokenId, tokenURI);
+        
+        emit VoteCertificateIssued(voter, tokenId);
     }
 
+    // Génération de l'URI du certificat
+    function _generateCertificateURI(address voter, uint256 tokenId) 
+        internal 
+        view 
+        returns (string memory) 
+    {
+        return string(
+            abi.encodePacked(
+                _certificateBaseURI,
+                "/",
+                tokenId.toString(),
+                "?voter=",
+                Strings.toHexString(uint160(voter), 20)
+            )
+        );
+    }
+
+    // Override de _baseURI pour ERC721
     function _baseURI() internal view virtual override returns (string memory) {
-        return _baseTokenURI;
+        return _certificateBaseURI;
+    }
+
+    // Fonction pour récupérer l'URI de base actuelle
+    function getCertificateBaseURI() 
+        external 
+        view 
+        onlyRole(DEFAULT_ADMIN_ROLE) 
+        returns (string memory) 
+    {
+        return _certificateBaseURI;
+    }
+
+    // Getters
+    function getResolutionDetails(uint256 resolutionId) external view returns (
+        string memory title,
+        string memory description,
+        uint256 startTime,
+        uint256 endTime,
+        ResolutionStatus status,
+        uint256 votesPour,
+        uint256 votesContre,
+        uint256 votesAbstention
+    ) {
+        Resolution storage resolution = resolutions[resolutionId];
+        return (
+            resolution.title,
+            resolution.description,
+            resolution.startTime,
+            resolution.endTime,
+            resolution.status,
+            resolution.votesPour,
+            resolution.votesContre,
+            resolution.votesAbstention
+        );
+    }
+
+    function getVoterHistory(address voter) external view returns (VoteRecord[] memory) {
+        return voterHistory[voter];
     }
 
     // Fonctions de pause
@@ -181,42 +254,11 @@ contract ElectionSystem is AccessControl, ReentrancyGuard, ERC721, Pausable {
         _unpause();
     }
 
-    // Fonctions de consultation
-    function getVotersCount() public view returns (uint256) {
-        return _votersCount;
-    }
-
-    function getResolutionDetails(uint256 resolutionId) 
-        external 
-        view 
-        resolutionExists(resolutionId) 
-        returns (
-            string memory description,
-            uint256 startTime,
-            uint256 endTime,
-            Status status,
-            uint256 votesFor,
-            uint256 votesAgainst,
-            uint256 votesAbstain
-        ) 
-    {
-        Resolution storage resolution = resolutions[resolutionId];
-        return (
-            resolution.description,
-            resolution.startTime,
-            resolution.endTime,
-            resolution.status,
-            resolution.votesFor,
-            resolution.votesAgainst,
-            resolution.votesAbstain
-        );
-    }
-
     // Override requis
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721, AccessControl)
+        override(ERC721URIStorage, AccessControl)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
