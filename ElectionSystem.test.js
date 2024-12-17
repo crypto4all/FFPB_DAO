@@ -5,12 +5,9 @@ const { time } = require("@nomicfoundation/hardhat-network-helpers");
 describe("ElectionSystem", function () {
     let ElectionSystem;
     let electionSystem;
-    let owner;
-    let voter1;
-    let voter2;
-    let addr3;
+    let owner, voter1, voter2, addr3;
 
-    // Configuration constantes
+    // Configuration des constantes
     const NAME = "Election Certificate";
     const SYMBOL = "ELECT";
     const MIN_TOKENS = 1;
@@ -26,7 +23,7 @@ describe("ElectionSystem", function () {
         electionSystem = await ElectionSystemFactory.deploy(NAME, SYMBOL, MIN_TOKENS, BASE_URI);
         await electionSystem.waitForDeployment();
 
-        // Configuration des rôles de votants
+        // Attribution des rôles de votants
         await electionSystem.grantRole(VOTER_ROLE, voter1.address);
         await electionSystem.grantRole(VOTER_ROLE, voter2.address);
     });
