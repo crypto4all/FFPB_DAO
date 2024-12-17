@@ -1,4 +1,4 @@
-# ElectionSystem Smart Contract
+# Election System Smart Contract
 
 ## Description
 **ElectionSystem** est un smart contract Solidity conçu pour gérer des élections et des votes de manière décentralisée sur la blockchain Ethereum. Ce système offre une solution complète pour organiser des assemblées, créer des résolutions, gérer les votes des participants et émettre des certificats NFT pour les votants.
